@@ -4,6 +4,7 @@ from optparse import OptionParser
 from transformers import AutoModelForCausalLM, AutoTokenizer
 from llama_cpp import Llama
 import os
+import json
 
 ### THE IDEA ###
 ##So we could totally just take the alpaca-lora fine tuning dataset and fine tune dolly with it. But I wanna see AI
@@ -20,7 +21,7 @@ model_dir = "/home/shawn/datasets/LLMs/dolly7b_model"
 run_time = 7200
 convo_fn = "conversation3.txt"
 preprompt = "Tell me something interesting and novel about the following statement: "
-followup = " Include a creative followup question for discussion at the end of your response, preface this followup question with the string 'Question:'."
+followup = " Include a followup question that could be used to improve your plan at the end of your response, preface this followup question with the string 'Question:'."
 #flags
 convo_path = memory_dir + '/' + convo_fn
 make_convo_txt_cmd="> " + convo_path
@@ -54,17 +55,35 @@ if options.model_name:
     model_name = options.model_name 
 
 #change this later
-prompt = "Give me an interesting discussion question for discussion:"
+prompt = "How do you predict the role of a mutation in oncogenesis from a vcf file and a corresponding BAM file?"
 
-from instruct_pipeline import InstructionTextGenerationPipeline
-if from_online:
-    generate_text = pipeline(model="databricks/dolly-v2-7b", torch_dtype=torch.bfloat16, trust_remote_code=True, device_map="auto")    
-else:    
-    model = AutoModelForCausalLM.from_pretrained(model_dir, torch_dtype=torch.bfloat16, device_map="auto")
-    tokenizer = AutoTokenizer.from_pretrained(model_dir, padding_side="left")
-    generate_text = InstructionTextGenerationPipeline(model=model, tokenizer=tokenizer)
+def saveJson(json_fn,prompt,processed_response):
+    '''
+        I was kinda lazy and json_fn needs to already exist as a file in some way for this to work.
+    '''
+    instruct_dict = {}
+    instruct_dict['instruction'] = prompt
+    instruct_dict['input'] = ''
+    instruct_dict['output'] = processed_response   
+    with open(memory_dir + json_fn, 'w+b') as f:
+        json_list = json.load(f)
+        print("json list before appending is: ")
+        print(json_list)
+        json_list.append(instruct_dict)
+        json_list = json.dumps(json_list)
+        print(json_list)
+        f.write(bytes(json_list, 'utf-8'))
+    return(json_list)
 
 def ask_dolly(prompt, memory_dir):
+
+    from instruct_pipeline import InstructionTextGenerationPipeline
+    if from_online:
+        generate_text = pipeline(model="databricks/dolly-v2-7b", torch_dtype=torch.bfloat16, trust_remote_code=True, device_map="auto")    
+    else:    
+        model = AutoModelForCausalLM.from_pretrained(model_dir, torch_dtype=torch.bfloat16, device_map="auto")
+        tokenizer = AutoTokenizer.from_pretrained(model_dir, padding_side="left")
+        generate_text = InstructionTextGenerationPipeline(model=model, tokenizer=tokenizer)
     with open(memory_dir + convo_fn, 'r+b') as f:
         contents = f.read().decode('utf-8')
         #contextual_prompt = contents + "\n Input: " + prompt + "\n Output: " 
@@ -100,8 +119,23 @@ def ask_lora(prompt, memory_dir):
         #save additional context
         new_context = "\n"+ "Prompt: " + new_prompt + "\n" + "Response: " + processed_response
 
+
         f.write(bytes(new_context, 'utf-8'))
-        #save the model again (this could either be extremely important or useless idk lol)
+        curated_dataset_fn="convo_dataset.json"
+        instruct_dict = {}
+        instruct_dict['instruction'] = new_prompt
+        instruct_dict['input'] = ''
+        instruct_dict['output'] = processed_response   
+        with open(memory_dir + curated_dataset_fn, 'r+b') as f:
+            json_list = json.load(f)
+            print("json list before appending is: ")
+            print(json_list)
+            json_list.append(instruct_dict)
+            json_list = json.dumps(json_list)
+            print(json_list)
+            json.dump(json_list, f)
+            #f.write(bytes(json_list, 'utf-8'))
+    #save the model again (this could either be extremely important or useless idk lol)
     #f2 = open(memory_dir + 'dataset.json', 'r+b')
     #f2.write(bytes(str(output), 'utf-8'))
     print(processed_response) 
