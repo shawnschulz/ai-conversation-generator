@@ -13,6 +13,14 @@ import json
 
 ##TODO get results properly saved to JSON file in a clean way
 
+## New idea, do few shot learning with past 7 prompts and remove the oldest prompt past 7 prompts
+# from working memory
+
+## Other idea: use jaccard similarity or some other measure of textual similarity, or just how 
+# similar the token values are, if the similarity is over a certain threshold, figure out a way
+# to inject a new prompt, ideally automated with some kind of prompt that takes the 
+# 7 prompts in workin gmemory and asks lora to generate a unique one
+
 #default args
 memory_dir = "/home/shawn/datasets/ai_convos/"
 from_online = False
@@ -20,8 +28,12 @@ save_model = False
 model_dir = "/home/shawn/datasets/LLMs/dolly7b_model" 
 run_time = 7200
 convo_fn = "conversation3.txt"
-preprompt = "Tell me something interesting and novel about the following statement: "
-followup = " Include a followup question that could be used to improve your plan at the end of your response, preface this followup question with the string 'Question:'."
+#preprompt = "Tell me something interesting and novel about the following statement: "
+preprompt = "You are Grom a powerful and wry orc warrior bartering with a hero for his coin."
+followup = "Answer the previous sentence as Grom. End your response with something unique Grom, a beefy muscular orc warrior would say to continue the conversation."
+preprompt2 = "You are Galen, a witty, intelligent and lithe elf wizard discovering the mysteries of Asteria."
+followup2 = "Answer the previous sentence as Galen. End your response with something unique Galen, a lithe and intelligent elf wizard would say to continue the conversation."
+#followup = " Include a statement, preface this followup question with the string 'Question:'."
 #flags
 convo_path = memory_dir + '/' + convo_fn
 make_convo_txt_cmd="> " + convo_path
@@ -54,8 +66,23 @@ if options.model_dir:
 if options.model_name:
     model_name = options.model_name 
 
+## Stop doing this in a dumb way, define a new class called "conversation" which can define the 
+# number of AI actors and create instances of their unique preprompts and followups for a less dumb
+# way of doing this
+
+class aiActor:
+    def __init__(self, personality="string", preprompt="string", followup="string",
+                 is_programmer=False
+                 ):
+        self.personalitiy = personality
+
+class aiConversation:
+    def __init__(self, num_actors=2):
+        self.num_actors = num_actors
+
+
 #change this later
-prompt = "How do you predict the role of a mutation in oncogenesis from a vcf file and a corresponding BAM file?"
+prompt = "Can you write dialgoue that would fit into an epic RPG adventure? The setting is that the Llothquestra, queen of the dark elves the Undervald has been assasinated and 2 characters are discussing."
 
 def saveJson(json_fn,prompt,processed_response):
     '''
@@ -88,6 +115,7 @@ def ask_dolly(prompt, memory_dir):
         contents = f.read().decode('utf-8')
         #contextual_prompt = contents + "\n Input: " + prompt + "\n Output: " 
         new_prompt = preprompt + prompt + followup        
+        #new_prompt = prompt
         response = generate_text(new_prompt)
         split_string = response.split("Output:")
 
@@ -108,7 +136,8 @@ def ask_lora(prompt, memory_dir):
     with open(memory_dir + convo_fn, 'r+b') as f:
         contents = f.read().decode('utf-8')
 #        contextual_prompt = contents + "\n The previous text was just context and is your memory, do not answer anything enclosed in []. Please answer the following question only Q: " + prompt           
-        new_prompt = preprompt + prompt + followup
+        #new_prompt = preprompt + prompt + followup
+        new_prompt = prompt
         output = llm("Input: " + new_prompt + " Output:", stop=['Input:'], max_tokens=200, echo=True)
         response = output["choices"][0]["text"]
         # Split the input_string based on the 'Output:' substring
@@ -121,29 +150,23 @@ def ask_lora(prompt, memory_dir):
 
 
         f.write(bytes(new_context, 'utf-8'))
-        curated_dataset_fn="convo_dataset.json"
-        instruct_dict = {}
-        instruct_dict['instruction'] = new_prompt
-        instruct_dict['input'] = ''
-        instruct_dict['output'] = processed_response   
-        with open(memory_dir + curated_dataset_fn, 'r+b') as f:
-            json_list = json.load(f)
-            print("json list before appending is: ")
-            print(json_list)
-            json_list.append(instruct_dict)
-            json_list = json.dumps(json_list)
-            print(json_list)
-            json.dump(json_list, f)
+#        curated_dataset_fn="convo_dataset.json"
+#        instruct_dict = {}
+#        instruct_dict['instruction'] = new_prompt
+#        instruct_dict['input'] = ''
+#        instruct_dict['output'] = processed_response   
+#        with open(memory_dir + curated_dataset_fn, 'w+b') as f:
+#            json_file = json.load(f)
+#            json_list = json_file.append(instruct_dict)
+#            json_list = json.dumps(json_list)
+#            json.dump(json_list, f)
             #f.write(bytes(json_list, 'utf-8'))
-    #save the model again (this could either be extremely important or useless idk lol)
-    #f2 = open(memory_dir + 'dataset.json', 'r+b')
-    #f2.write(bytes(str(output), 'utf-8'))
     print(processed_response) 
     return(processed_response)
 
 
 for i in range(50):
     print("Iteration " + str(i) + ": AI 1's response:")
-    lora_response=ask_lora(prompt, memory_dir=memory_dir)
+    lora_response=ask_lora(preprompt + prompt + followup, memory_dir=memory_dir)
     print("Iteration " + str(i) + ": AI 2's response:")
-    prompt=ask_lora(lora_response, memory_dir=memory_dir)
+    prompt=ask_lora(preprompt2 + lora_response + followup2, memory_dir=memory_dir)

@@ -6,6 +6,8 @@ import importlib.util
 import sys
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
+#to-do: add a short term memory with the last 7 prompts given to dolly
+
 #default args
 memory_dir = "/home/shawn/datasets/dolly_memory/"
 from_online = False
